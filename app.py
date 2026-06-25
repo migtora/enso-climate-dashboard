@@ -28,27 +28,21 @@ def load_data():
     except Exception as e:
         st.error(f"Error connecting to NOAA data feed: {e}")
         return None
-
-df_all = load_data()
-
 if df_all is not None:
-    # Get the last 24 reported rolling seasons
+    # 1. Grab the last 24 periods
     df_recent = df_all.tail(24).copy()
     df_recent['Timeframe'] = df_recent['YR'].astype(str) + " (" + df_recent['Season'] + ")"
 
-    # 3. Layout Key Metrics
+    # 2. Layout Key Metrics
     latest_val = df_recent['RONI'].iloc[-1]
     latest_time = df_recent['Timeframe'].iloc[-1]
     
     if latest_val >= 0.5:
         status = "🔴 El Niño (Warm Phase)"
-        color = "inverse"
     elif latest_val <= -0.5:
         status = "🔵 La Niña (Cool Phase)"
-        color = "normal"
     else:
         status = "⚪ ENSO-Neutral"
-        color = "off"
         
     col1, col2 = st.columns(2)
     with col1:
@@ -58,38 +52,8 @@ if df_all is not None:
 
     st.write("---")
 
-    # 4. Generate the Plot
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    
-    # Plot line and dots
-    ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
-    
-    # Threshold Shading
-    ax.axhspan(0.5, max(2.0, latest_val + 0.2), color='#ffcccc', alpha=0.5, label='El Niño Threshold (≥ 0.5°C)')
-    ax.axhspan(-0.5, 0.5, color='#f0f0f0', alpha=0.5, label='Neutral Zone')
-    ax.axhspan(min(-2.0, latest_val - 0.2), -0.5, color='#cce6ff', alpha=0.5, label='La Niña Threshold (≤ -0.5°C)')
-    
-    # Baseline line
-    ax.axhline(0, color='gray', linestyle='--', linewidth=1)
-    
-    # Styling details
-    ax.set_ylabel("SST Anomaly Delta (°C)")
-    ax.set_title("Relative Oceanic Niño Index — Last 6 Measurement Periods")
-    ax.legend(loc="upper left")
-    ax.grid(axis='y', linestyle=':', alpha=0.6)
-    
-    # Render plot to Streamlit
-    st.pyplot(fig)
-
-    # 5. Raw Data View Option
-    with st.expander("Show raw data for last 6 periods"):
-        st.dataframe(df_recent[['YR', 'Season', 'RONI']])
-# ... (Keep everything above the plot generation the same) ...
-
-    st.write("---")
-
-    # Generate the Plot
-    fig, ax = plt.subplots(figsize=(12, 5.5)) # Slightly taller for better label breathing room
+    # 3. Generate the Single Clean Plot
+    fig, ax = plt.subplots(figsize=(12, 5.5))
     
     ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
     
@@ -105,14 +69,18 @@ if df_all is not None:
     ax.legend(loc="upper left")
     ax.grid(axis='y', linestyle=':', alpha=0.6)
     
-    # --- FIX FOR OVERLAPPING X-AXIS LABELS ---
-    # This keeps all the data points but only prints a clean date label for every 3rd period
+    # Clean X-axis ticks (showing every 3rd label)
     ticks_to_use = range(0, len(df_recent['Timeframe']), 3)
     labels_to_use = [df_recent['Timeframe'].iloc[i] for i in ticks_to_use]
     
     ax.set_xticks(ticks_to_use)
     ax.set_xticklabels(labels_to_use, rotation=45, ha='right', fontsize=9)
-    # -----------------------------------------
     
+    plt.tight_layout()
+    st.pyplot(fig)
+
+    # 4. Raw Data View Option (Updated footer to match the 24 periods)
+    with st.expander("Show raw data for last 24 periods"):
+        st.dataframe(df_recent[['YR', 'Season', 'RONI']])
     plt.tight_layout()
     st.pyplot(fig)
