@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
-import io
 
 # 1. Page Configuration
 st.set_page_config(page_title="Global Climate Dashboard: ENSO (RONI)", layout="wide")
@@ -20,36 +19,49 @@ def load_data():
             st.error(f"Failed to pull data from NOAA server (Status code: {response.status_code})")
             return None
             
-        # Read using standard whitespace splitting
-        df = pd.read_csv(io.StringIO(response.text), sep=r'\s+', header=0)
+        # Split raw text purely by whitespace chunks to break through formatting alignment shifts
+        tokens = response.text.split()
         
-        # Standardize column headers and strip hidden characters
-        df.columns = df.columns.str.strip()
-        
-        # Expected column list
+        # The table has 13 columns: YR + 12 seasons
         seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
         
-        # Safety fallback: If standard headers fail due to top-line shift, enforce names directly
-        if not all(col in df.columns for col in seasons):
-            df = pd.read_csv(io.StringIO(response.text), sep=r'\s+', names=['YR'] + seasons, header=None, skiprows=1)
+        # Find where the data actually starts by locating the first valid 4-digit year token
+        start_idx = None
+        for i, token in enumerate(tokens):
+            if token.isdigit() and len(token) == 4 and int(token) >= 1900:
+                # Double check if there are numeric values following it to confirm it's the table start
+                start_idx = i
+                break
+                
+        if start_idx == None:
+            st.error("Could not locate the historical dataset sequence within the source file.")
+            return None
+            
+        # Extract only the data chunks from that starting position onward
+        data_tokens = tokens[start_idx:]
         
-        # Drop any row that accidentally parsed header strings into data
-        df = df[pd.to_numeric(df['YR'], errors='coerce').notnull()]
+        # Group into rows of exactly 13 columns
+        rows = []
+        for i in range(0, len(data_tokens) - len(data_tokens) % 13, 13):
+            rows.append(data_tokens[i:i+13])
+            
+        # Construct DataFrame cleanly
+        df = pd.DataFrame(rows, columns=['YR'] + seasons)
+        
+        # Convert all values to floats, handling missing marker data gracefully
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+        df = df.dropna(subset=['YR'])
         df['YR'] = df['YR'].astype(int)
         
-        # Melt data into a long, clean time series format
+        # Melt to deep time series format
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
         
-        # Map seasons to chronological order numbers so they sort properly
+        # Establish chronologically stable sequence order sorting
         season_order = {s: i for i, s in enumerate(seasons)}
         df_long['Season_Order'] = df_long['Season'].map(season_order)
-        
-        # Sort chronologically by Year, then by Season sequence
         df_long = df_long.sort_values(by=['YR', 'Season_Order']).dropna().reset_index(drop=True)
-        
-        # Convert RONI column to true numeric floats
-        df_long['RONI'] = pd.to_numeric(df_long['RONI'], errors='coerce')
-        df_long = df_long.dropna(subset=['RONI'])
         
         return df_long
     except Exception as e:
@@ -82,14 +94,14 @@ if df_all is not None and not df_all.empty:
 
     st.write("---")
 
-    # 5. Generate the Clean Visual Chart
+    # 5. Generate the Single Clean Plot
     fig, ax = plt.subplots(figsize=(12, 5.5))
     
-    # Notice we use standard sequence index numbers for the X positions to ensure spacing layout
-    x_positions = range(len(df_recent))
+    # Use exact integer step ranges for horizontal coordinates to stop point grouping overlap anomalies
+    x_positions = list(range(len(df_recent)))
     ax.plot(x_positions, df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
     
-    # Threshold Shading Zones
+    # Threshold Shading
     ax.axhspan(0.5, max(2.0, latest_val + 0.2), color='#ffcccc', alpha=0.5, label='El Niño Threshold (≥ 0.5°C)')
     ax.axhspan(-0.5, 0.5, color='#f0f0f0', alpha=0.5, label='Neutral Zone')
     ax.axhspan(min(-2.0, latest_val - 0.2), -0.5, color='#cce6ff', alpha=0.5, label='La Niña Threshold (≤ -0.5°C)')
@@ -101,7 +113,7 @@ if df_all is not None and not df_all.empty:
     ax.legend(loc="upper left")
     ax.grid(axis='y', linestyle=':', alpha=0.6)
     
-    # Map the true unique timeframe names exactly to each positional tick index
+    # Map label frames distinctly onto layout indexes
     ax.set_xticks(x_positions)
     ax.set_xticklabels(df_recent['Timeframe'], rotation=45, ha='right', fontsize=9)
     
