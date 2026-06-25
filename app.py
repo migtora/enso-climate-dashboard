@@ -4,23 +4,28 @@ import matplotlib.pyplot as plt
 import requests
 from io import StringIO
 
-# --------------------------------------------------
+# =====================================================
 # PAGE CONFIG
-# --------------------------------------------------
+# =====================================================
 
 st.set_page_config(
-    page_title="ENSO Climate Dashboard",
+    page_title="ENSO Dashboard",
+    page_icon="🌊",
     layout="wide"
 )
 
 st.title("🌊 ENSO Dashboard")
-st.caption("Relative Oceanic Niño Index (RONI) Monitor")
+st.subheader("Relative Oceanic Niño Index (RONI)")
+
+# =====================================================
+# NOAA DATA SOURCE
+# =====================================================
 
 DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 
-# --------------------------------------------------
-# DATA LOADER
-# --------------------------------------------------
+# =====================================================
+# LOAD DATA
+# =====================================================
 
 @st.cache_data(ttl=86400)
 def load_roni():
@@ -29,198 +34,157 @@ def load_roni():
         "User-Agent": "Mozilla/5.0"
     }
 
-    try:
+    response = requests.get(
+        DATA_URL,
+        headers=headers,
+        timeout=30
+    )
 
-        response = requests.get(
-            DATA_URL,
-            headers=headers,
-            timeout=30
+    response.raise_for_status()
+
+    text = response.text
+
+    # NOAA format:
+    # SEAS YR ANOM
+    # DJF 1950 -1.47
+
+    df = pd.read_csv(
+        StringIO(text),
+        sep=r"\s+"
+    )
+
+    df.columns = [
+        "Season",
+        "Year",
+        "RONI"
+    ]
+
+    df["Year"] = pd.to_numeric(df["Year"])
+    df["RONI"] = pd.to_numeric(df["RONI"])
+
+    season_order = {
+        "DJF":0,
+        "JFM":1,
+        "FMA":2,
+        "MAM":3,
+        "AMJ":4,
+        "MJJ":5,
+        "JJA":6,
+        "JAS":7,
+        "ASO":8,
+        "SON":9,
+        "OND":10,
+        "NDJ":11
+    }
+
+    df["Season_Order"] = df["Season"].map(season_order)
+
+    df = (
+        df.sort_values(
+            ["Year", "Season_Order"]
         )
+        .reset_index(drop=True)
+    )
 
-        response.raise_for_status()
+    return df
 
-        raw_text = response.text
+# =====================================================
+# GET DATA
+# =====================================================
 
-        # Debug switch
-        # st.code(raw_text[:2000])
+try:
 
-        seasons = [
-            'DJF','JFM','FMA','MAM',
-            'AMJ','MJJ','JJA','JAS',
-            'ASO','SON','OND','NDJ'
-        ]
+    df = load_roni()
 
-        rows = []
+except Exception as e:
 
-        for line in raw_text.splitlines():
-
-            parts = line.split()
-
-            if len(parts) >= 13:
-
-                year = parts[0]
-
-                if year.isdigit() and len(year) == 4:
-
-                    rows.append(parts[:13])
-
-        if len(rows) == 0:
-            return None, raw_text
-
-        df = pd.DataFrame(
-            rows,
-            columns=["YR"] + seasons
-        )
-
-        for col in df.columns:
-            df[col] = pd.to_numeric(
-                df[col],
-                errors="coerce"
-            )
-
-        df["YR"] = df["YR"].astype(int)
-
-        df_long = pd.melt(
-            df,
-            id_vars=["YR"],
-            value_vars=seasons,
-            var_name="Season",
-            value_name="RONI"
-        )
-
-        season_order = {
-            "DJF":0,
-            "JFM":1,
-            "FMA":2,
-            "MAM":3,
-            "AMJ":4,
-            "MJJ":5,
-            "JJA":6,
-            "JAS":7,
-            "ASO":8,
-            "SON":9,
-            "OND":10,
-            "NDJ":11
-        }
-
-        df_long["Season_Order"] = (
-            df_long["Season"]
-            .map(season_order)
-        )
-
-        df_long = (
-            df_long
-            .sort_values(
-                ["YR","Season_Order"]
-            )
-            .dropna()
-            .reset_index(drop=True)
-        )
-
-        return df_long, None
-
-    except Exception as e:
-
-        return None, str(e)
-
-# --------------------------------------------------
-# LOAD DATA
-# --------------------------------------------------
-
-df, debug = load_roni()
-
-# --------------------------------------------------
-# ERROR HANDLING
-# --------------------------------------------------
-
-if df is None:
-
-    st.error("Unable to load NOAA RONI dataset.")
-
-    with st.expander("Debug Information"):
-
-        st.write(debug)
-
+    st.error(f"NOAA Data Error: {e}")
     st.stop()
 
-# --------------------------------------------------
-# LAST 24 OBSERVATIONS
-# --------------------------------------------------
+# =====================================================
+# LAST 24 PERIODS
+# =====================================================
 
 recent = df.tail(24).copy()
 
 recent["Period"] = (
-    recent["YR"].astype(str)
+    recent["Year"].astype(str)
     + "-"
     + recent["Season"]
 )
 
+# =====================================================
+# CURRENT STATUS
+# =====================================================
+
 latest = recent.iloc[-1]
 
-latest_roni = latest["RONI"]
+latest_value = float(latest["RONI"])
 
-if latest_roni >= 0.5:
+if latest_value >= 0.5:
     phase = "🔴 El Niño"
-elif latest_roni <= -0.5:
+
+elif latest_value <= -0.5:
     phase = "🔵 La Niña"
+
 else:
     phase = "⚪ Neutral"
 
-# --------------------------------------------------
+# =====================================================
 # KPI SECTION
-# --------------------------------------------------
+# =====================================================
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-
     st.metric(
         "Latest RONI",
-        round(float(latest_roni),2)
+        f"{latest_value:.2f} °C"
     )
 
 with col2:
-
     st.metric(
         "Current Phase",
         phase
     )
 
 with col3:
-
     st.metric(
-        "Observation",
+        "Latest Period",
         latest["Period"]
     )
 
 st.divider()
 
-# --------------------------------------------------
+# =====================================================
 # CHART
-# --------------------------------------------------
+# =====================================================
 
 fig, ax = plt.subplots(
     figsize=(14,6)
 )
 
-x = range(len(recent))
+x = list(range(len(recent)))
 
+# El Niño Zone
 ax.axhspan(
     0.5,
-    2.0,
-    alpha=0.20
+    3,
+    alpha=0.15
 )
 
+# Neutral Zone
 ax.axhspan(
     -0.5,
     0.5,
     alpha=0.08
 )
 
+# La Niña Zone
 ax.axhspan(
-    -2.0,
+    -3,
     -0.5,
-    alpha=0.20
+    alpha=0.15
 )
 
 ax.plot(
@@ -232,19 +196,35 @@ ax.plot(
 
 ax.axhline(
     0,
-    linestyle="--",
-    linewidth=1
+    linestyle="--"
+)
+
+ax.axhline(
+    0.5,
+    linestyle=":"
+)
+
+ax.axhline(
+    -0.5,
+    linestyle=":"
+)
+
+margin = 0.25
+
+ax.set_ylim(
+    recent["RONI"].min() - margin,
+    recent["RONI"].max() + margin
 )
 
 ax.set_title(
-    "RONI (Last 24 Periods)"
+    "RONI - Last 24 Periods"
 )
 
 ax.set_ylabel(
     "Temperature Anomaly (°C)"
 )
 
-ax.set_xticks(list(x))
+ax.set_xticks(x)
 
 ax.set_xticklabels(
     recent["Period"],
@@ -252,27 +232,36 @@ ax.set_xticklabels(
     ha="right"
 )
 
-ax.grid(
-    alpha=0.3
-)
+ax.grid(alpha=0.3)
 
 plt.tight_layout()
 
 st.pyplot(fig)
 
-# --------------------------------------------------
-# TABLE
-# --------------------------------------------------
+# =====================================================
+# RAW DATA
+# =====================================================
 
 with st.expander("Raw Data"):
 
     st.dataframe(
         recent[
             [
-                "YR",
+                "Year",
                 "Season",
                 "RONI"
             ]
         ],
+        use_container_width=True
+    )
+
+# =====================================================
+# FULL DATA
+# =====================================================
+
+with st.expander("Full NOAA Dataset"):
+
+    st.dataframe(
+        df,
         use_container_width=True
     )
