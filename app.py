@@ -13,15 +13,15 @@ DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 @st.cache_data(ttl=86400)
 def load_data():
     try:
-        # FIX: Using sep=r'\s+' instead of delim_whitespace to support modern Pandas versions
-        df = pd.read_csv(DATA_URL, sep=r'\s+', header=0)
+        # FIX: Read as Fixed-Width File because NOAA's headers don't align with standard spaces
+        df = pd.read_fwf(DATA_URL, header=0)
         
-        # Clean column names in case NOAA added trailing or leading spaces
+        # Clean up any weird spaces around column header names
         df.columns = df.columns.str.strip()
         
         seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
         
-        # Melt and format data
+        # Reshape data cleanly
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
         df_long = df_long.sort_values(by=['YR', 'Season']).dropna().reset_index(drop=True)
         return df_long
