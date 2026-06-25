@@ -9,31 +9,29 @@ st.title("🌊 ENSO Tracker: Relative Oceanic Niño Index (RONI)")
 st.subheader("Monitoring El Niño and La Niña transitions over the last 24 months")
 
 # 2. Fetch Data from Official NOAA Source
-# This URL points directly to the active ASCII text file updated by NOAA's Climate Prediction Center
 DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 
-@st.cache_data(ttl=86400) # Cache data for 24 hours (86,400 seconds) so it updates daily
+@st.cache_data(ttl=86400) # Cache data for 24 hours to update daily
 def load_data():
     try:
-        # Read the whitespace-delimited file directly from NOAA
         df = pd.read_csv(DATA_URL, sep=r'\s+', header=0)
-        
-        # Rename columns to match expected schema: SEAS -> Season, ANOM -> RONI
-        df = df.rename(columns={'SEAS': 'Season', 'ANOM': 'RONI'})
-        
-        # Ensure correct datatypes and drop missing
-        df['RONI'] = pd.to_numeric(df['RONI'], errors='coerce')
-        df_clean = df.dropna(subset=['RONI']).reset_index(drop=True)
-        return df_clean
+        seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+        df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
+        df_long = df_long.sort_values(by=['YR', 'Season']).dropna().reset_index(drop=True)
+        return df_long
     except Exception as e:
         st.error(f"Error connecting to NOAA data feed: {e}")
         return None
+
+# --- This is the line Python was missing! ---
+df_all = load_data()
+
 if df_all is not None:
-    # 1. Grab the last 24 periods
+    # 3. Grab the last 24 periods (2 years)
     df_recent = df_all.tail(24).copy()
     df_recent['Timeframe'] = df_recent['YR'].astype(str) + " (" + df_recent['Season'] + ")"
 
-    # 2. Layout Key Metrics
+    # 4. Layout Key Metrics
     latest_val = df_recent['RONI'].iloc[-1]
     latest_time = df_recent['Timeframe'].iloc[-1]
     
@@ -52,7 +50,7 @@ if df_all is not None:
 
     st.write("---")
 
-    # 3. Generate the Single Clean Plot
+    # 5. Generate the Single Clean Plot
     fig, ax = plt.subplots(figsize=(12, 5.5))
     
     ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
@@ -79,8 +77,6 @@ if df_all is not None:
     plt.tight_layout()
     st.pyplot(fig)
 
-    # 4. Raw Data View Option (Updated footer to match the 24 periods)
+    # 6. Raw Data View Option
     with st.expander("Show raw data for last 24 periods"):
         st.dataframe(df_recent[['YR', 'Season', 'RONI']])
-    plt.tight_layout()
-    st.pyplot(fig)
