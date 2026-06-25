@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
+import io
 
 # 1. Page Configuration
 st.set_page_config(page_title="Global Climate Dashboard: ENSO (RONI)", layout="wide")
@@ -19,46 +20,33 @@ def load_data():
             st.error(f"Failed to pull data from NOAA server (Status code: {response.status_code})")
             return None
             
-        # Split raw text purely by whitespace chunks to break through formatting alignment shifts
-        tokens = response.text.split()
-        
-        # The table has 13 columns: YR + 12 seasons
         seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+        rows = []
         
-        # Find where the data actually starts by locating the first valid 4-digit year token
-        start_idx = None
-        for i, token in enumerate(tokens):
-            if token.isdigit() and len(token) == 4 and int(token) >= 1900:
-                # Double check if there are numeric values following it to confirm it's the table start
-                start_idx = i
-                break
+        # Process line-by-line to securely ignore metadata and bottom footnotes
+        for line in response.text.split('\n'):
+            parts = line.split()
+            # A valid data row MUST have at least 13 items and start with a 4-digit year
+            if len(parts) >= 13 and parts[0].isdigit() and len(parts[0]) == 4:
+                rows.append(parts[:13])
                 
-        if start_idx == None:
-            st.error("Could not locate the historical dataset sequence within the source file.")
+        if not rows:
+            st.error("Could not parse the historical data structure from the source file.")
             return None
             
-        # Extract only the data chunks from that starting position onward
-        data_tokens = tokens[start_idx:]
-        
-        # Group into rows of exactly 13 columns
-        rows = []
-        for i in range(0, len(data_tokens) - len(data_tokens) % 13, 13):
-            rows.append(data_tokens[i:i+13])
-            
-        # Construct DataFrame cleanly
+        # Build DataFrame directly from pure data rows
         df = pd.DataFrame(rows, columns=['YR'] + seasons)
         
-        # Convert all values to floats, handling missing marker data gracefully
+        # Convert all columns to floats cleanly
         for col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
-        df = df.dropna(subset=['YR'])
         df['YR'] = df['YR'].astype(int)
         
-        # Melt to deep time series format
+        # Melt into a long-form time series
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
         
-        # Establish chronologically stable sequence order sorting
+        # Set up a chronological map so months/seasons sort in order
         season_order = {s: i for i, s in enumerate(seasons)}
         df_long['Season_Order'] = df_long['Season'].map(season_order)
         df_long = df_long.sort_values(by=['YR', 'Season_Order']).dropna().reset_index(drop=True)
@@ -94,10 +82,9 @@ if df_all is not None and not df_all.empty:
 
     st.write("---")
 
-    # 5. Generate the Single Clean Plot
+    # 5. Generate the Clean Visual Chart
     fig, ax = plt.subplots(figsize=(12, 5.5))
     
-    # Use exact integer step ranges for horizontal coordinates to stop point grouping overlap anomalies
     x_positions = list(range(len(df_recent)))
     ax.plot(x_positions, df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
     
@@ -113,7 +100,7 @@ if df_all is not None and not df_all.empty:
     ax.legend(loc="upper left")
     ax.grid(axis='y', linestyle=':', alpha=0.6)
     
-    # Map label frames distinctly onto layout indexes
+    # Display names clearly across uniform 24-period milestones
     ax.set_xticks(x_positions)
     ax.set_xticklabels(df_recent['Timeframe'], rotation=45, ha='right', fontsize=9)
     
@@ -123,5 +110,3 @@ if df_all is not None and not df_all.empty:
     # 6. Raw Data View Option
     with st.expander("Show raw data for last 24 periods"):
         st.dataframe(df_recent[['YR', 'Season', 'RONI']])
-else:
-    st.warning("No clean historical data loaded. Check parsing rules.")
