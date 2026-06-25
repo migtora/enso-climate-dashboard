@@ -6,7 +6,7 @@ import requests
 # 1. Page Configuration
 st.set_page_config(page_title="Global Climate Dashboard: ENSO (RONI)", layout="wide")
 st.title("🌊 ENSO Tracker: Relative Oceanic Niño Index (RONI)")
-st.subheader("Monitoring El Niño and La Niña transitions over the last 6 months")
+st.subheader("Monitoring El Niño and La Niña transitions over the last 24 months")
 
 # 2. Fetch Data from Official NOAA Source
 # This URL points directly to the active ASCII text file updated by NOAA's Climate Prediction Center
@@ -32,8 +32,8 @@ def load_data():
 df_all = load_data()
 
 if df_all is not None:
-    # Get the last 6 reported rolling seasons
-    df_recent = df_all.tail(6).copy()
+    # Get the last 24 reported rolling seasons
+    df_recent = df_all.tail(24).copy()
     df_recent['Timeframe'] = df_recent['YR'].astype(str) + " (" + df_recent['Season'] + ")"
 
     # 3. Layout Key Metrics
