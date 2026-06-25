@@ -10,28 +10,33 @@ st.subheader("Monitoring El Niño and La Niña transitions over the last 24 mont
 # 2. Fetch Data from Official NOAA Source
 DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 
-@st.cache_data(ttl=86400) # Caches the data for 24 hours
+@st.cache_data(ttl=86400)
 def load_data():
     try:
-        # Read whitespace-separated values from official NOAA URL
-        df = pd.read_csv(DATA_URL, sep=r'\s+', header=0)
+        # Robust reading: skip initial blank spaces and handle inconsistent spacing
+        df = pd.read_csv(DATA_URL, delim_whitespace=True, header=0)
+        
+        # Clean column names in case NOAA added trailing or leading spaces
+        df.columns = df.columns.str.strip()
+        
         seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+        
+        # Melt and format data
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
         df_long = df_long.sort_values(by=['YR', 'Season']).dropna().reset_index(drop=True)
         return df_long
     except Exception as e:
-        st.error(f"Error connecting to NOAA data feed: {e}")
+        st.error(f"Error parsing NOAA data feed: {e}")
         return None
 
-# 3. Call the function cleanly with NO arguments inside the parentheses
 df_all = load_data()
 
 if df_all is not None:
-    # 4. Grab the last 24 periods (2 years)
+    # 3. Grab the last 24 periods (2 years)
     df_recent = df_all.tail(24).copy()
     df_recent['Timeframe'] = df_recent['YR'].astype(str) + " (" + df_recent['Season'] + ")"
 
-    # 5. Layout Key Metrics
+    # 4. Layout Key Metrics
     latest_val = df_recent['RONI'].iloc[-1]
     latest_time = df_recent['Timeframe'].iloc[-1]
     
@@ -50,7 +55,7 @@ if df_all is not None:
 
     st.write("---")
 
-    # 6. Generate the Single Clean Plot
+    # 5. Generate the Single Clean Plot
     fig, ax = plt.subplots(figsize=(12, 5.5))
     
     ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
@@ -67,7 +72,7 @@ if df_all is not None:
     ax.legend(loc="upper left")
     ax.grid(axis='y', linestyle=':', alpha=0.6)
     
-    # Clean X-axis ticks (showing every 3rd label to avoid messy overlapping text)
+    # Clean X-axis ticks (showing every 3rd label)
     ticks_to_use = range(0, len(df_recent['Timeframe']), 3)
     labels_to_use = [df_recent['Timeframe'].iloc[i] for i in ticks_to_use]
     
@@ -77,6 +82,6 @@ if df_all is not None:
     plt.tight_layout()
     st.pyplot(fig)
 
-    # 7. Raw Data View Option
+    # 6. Raw Data View Option
     with st.expander("Show raw data for last 24 periods"):
         st.dataframe(df_recent[['YR', 'Season', 'RONI']])
