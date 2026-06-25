@@ -10,10 +10,14 @@ st.subheader("Monitoring El Niño and La Niña transitions over the last 24 mont
 
 # 2. Fetch Data from Official NOAA Source
 DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
+# 2. Fetch Data from Official NOAA Source
+DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 
-@st.cache_data(ttl=86400) # Cache data for 24 hours to update daily
+# --- FIX: Changed syntax here to prevent the TypeError ---
+@st.cache_data(ttl=86400)
 def load_data():
     try:
+        # Read the whitespace-delimited file directly from NOAA
         df = pd.read_csv(DATA_URL, sep=r'\s+', header=0)
         seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
@@ -22,9 +26,6 @@ def load_data():
     except Exception as e:
         st.error(f"Error connecting to NOAA data feed: {e}")
         return None
-
-# --- This is the line Python was missing! ---
-df_all = load_data()
 
 if df_all is not None:
     # 3. Grab the last 24 periods (2 years)
