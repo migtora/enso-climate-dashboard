@@ -13,8 +13,8 @@ DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 @st.cache_data(ttl=86400)
 def load_data():
     try:
-        # Robust reading: skip initial blank spaces and handle inconsistent spacing
-        df = pd.read_csv(DATA_URL, delim_whitespace=True, header=0)
+        # FIX: Using sep=r'\s+' instead of delim_whitespace to support modern Pandas versions
+        df = pd.read_csv(DATA_URL, sep=r'\s+', header=0)
         
         # Clean column names in case NOAA added trailing or leading spaces
         df.columns = df.columns.str.strip()
