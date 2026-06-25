@@ -84,3 +84,35 @@ if df_all is not None:
     # 5. Raw Data View Option
     with st.expander("Show raw data for last 6 periods"):
         st.dataframe(df_recent[['YR', 'Season', 'RONI']])
+# ... (Keep everything above the plot generation the same) ...
+
+    st.write("---")
+
+    # Generate the Plot
+    fig, ax = plt.subplots(figsize=(12, 5.5)) # Slightly taller for better label breathing room
+    
+    ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
+    
+    # Threshold Shading
+    ax.axhspan(0.5, max(2.0, latest_val + 0.2), color='#ffcccc', alpha=0.5, label='El Niño Threshold (≥ 0.5°C)')
+    ax.axhspan(-0.5, 0.5, color='#f0f0f0', alpha=0.5, label='Neutral Zone')
+    ax.axhspan(min(-2.0, latest_val - 0.2), -0.5, color='#cce6ff', alpha=0.5, label='La Niña Threshold (≤ -0.5°C)')
+    
+    ax.axhline(0, color='gray', linestyle='--', linewidth=1)
+    
+    ax.set_ylabel("SST Anomaly Delta (°C)")
+    ax.set_title("Relative Oceanic Niño Index — Last 24 Measurement Periods")
+    ax.legend(loc="upper left")
+    ax.grid(axis='y', linestyle=':', alpha=0.6)
+    
+    # --- FIX FOR OVERLAPPING X-AXIS LABELS ---
+    # This keeps all the data points but only prints a clean date label for every 3rd period
+    ticks_to_use = range(0, len(df_recent['Timeframe']), 3)
+    labels_to_use = [df_recent['Timeframe'].iloc[i] for i in ticks_to_use]
+    
+    ax.set_xticks(ticks_to_use)
+    ax.set_xticklabels(labels_to_use, rotation=45, ha='right', fontsize=9)
+    # -----------------------------------------
+    
+    plt.tight_layout()
+    st.pyplot(fig)
