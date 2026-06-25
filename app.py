@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import requests
+import io
 
 # 1. Page Configuration
 st.set_page_config(page_title="Global Climate Dashboard: ENSO (RONI)", layout="wide")
@@ -13,15 +15,27 @@ DATA_URL = "https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt"
 @st.cache_data(ttl=86400)
 def load_data():
     try:
-        # FIX: Read as Fixed-Width File because NOAA's headers don't align with standard spaces
-        df = pd.read_fwf(DATA_URL, header=0)
+        # Fetch raw text from NOAA to manually clean up top alignment anomalies
+        response = requests.get(DATA_URL)
+        if response.status_code != 200:
+            st.error(f"Failed to pull data from NOAA server (Status code: {response.status_code})")
+            return None
+            
+        raw_text = response.text
+        lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
         
-        # Clean up any weird spaces around column header names
+        # Reconstruct into a clean space-separated text stream
+        clean_data = "\n".join(lines)
+        
+        # Read using a flexible regex separator for space variation
+        df = pd.read_csv(io.StringIO(clean_data), sep=r'\s+', header=0)
+        
+        # Standardize columns to strip hidden characters
         df.columns = df.columns.str.strip()
         
         seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
         
-        # Reshape data cleanly
+        # Melt and format data structure
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
         df_long = df_long.sort_values(by=['YR', 'Season']).dropna().reset_index(drop=True)
         return df_long
@@ -60,7 +74,7 @@ if df_all is not None:
     
     ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
     
-    # Threshold Shading
+    # Threshold Shading zones
     ax.axhspan(0.5, max(2.0, latest_val + 0.2), color='#ffcccc', alpha=0.5, label='El Niño Threshold (≥ 0.5°C)')
     ax.axhspan(-0.5, 0.5, color='#f0f0f0', alpha=0.5, label='Neutral Zone')
     ax.axhspan(min(-2.0, latest_val - 0.2), -0.5, color='#cce6ff', alpha=0.5, label='La Niña Threshold (≤ -0.5°C)')
