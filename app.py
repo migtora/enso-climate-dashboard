@@ -20,26 +20,37 @@ def load_data():
             st.error(f"Failed to pull data from NOAA server (Status code: {response.status_code})")
             return None
             
-        # Use exact column character widths to bypass parsing errors entirely
-        # YR (5 chars), then 12 seasons of 7 chars each
-        col_widths = [5, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
-        col_names = ['YR', 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+        # Read using standard whitespace splitting
+        df = pd.read_csv(io.StringIO(response.text), sep=r'\s+', header=0)
         
-        # Read fixed-width file, skipping the original misaligned header line entirely
-        df = pd.read_fwf(
-            io.StringIO(response.text),
-            widths=col_widths,
-            names=col_names,
-            header=None,
-            skiprows=1
-        )
+        # Standardize column headers and strip hidden characters
+        df.columns = df.columns.str.strip()
         
-        # Melt and clean data structure
-        seasons = col_names[1:]
+        # Expected column list
+        seasons = ['DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+        
+        # Safety fallback: If standard headers fail due to top-line shift, enforce names directly
+        if not all(col in df.columns for col in seasons):
+            df = pd.read_csv(io.StringIO(response.text), sep=r'\s+', names=['YR'] + seasons, header=None, skiprows=1)
+        
+        # Drop any row that accidentally parsed header strings into data
+        df = df[pd.to_numeric(df['YR'], errors='coerce').notnull()]
+        df['YR'] = df['YR'].astype(int)
+        
+        # Melt data into a long, clean time series format
         df_long = pd.melt(df, id_vars=['YR'], value_vars=seasons, var_name='Season', value_name='RONI')
         
-        # Ensure correct sorting and drop missing/trailing entries
-        df_long = df_long.sort_values(by=['YR', 'Season']).dropna().reset_index(drop=True)
+        # Map seasons to chronological order numbers so they sort properly
+        season_order = {s: i for i, s in enumerate(seasons)}
+        df_long['Season_Order'] = df_long['Season'].map(season_order)
+        
+        # Sort chronologically by Year, then by Season sequence
+        df_long = df_long.sort_values(by=['YR', 'Season_Order']).dropna().reset_index(drop=True)
+        
+        # Convert RONI column to true numeric floats
+        df_long['RONI'] = pd.to_numeric(df_long['RONI'], errors='coerce')
+        df_long = df_long.dropna(subset=['RONI'])
+        
         return df_long
     except Exception as e:
         st.error(f"Error parsing NOAA data feed: {e}")
@@ -47,7 +58,7 @@ def load_data():
 
 df_all = load_data()
 
-if df_all is not None:
+if df_all is not None and not df_all.empty:
     # 3. Grab the last 24 periods (2 years)
     df_recent = df_all.tail(24).copy()
     df_recent['Timeframe'] = df_recent['YR'].astype(str) + " (" + df_recent['Season'] + ")"
@@ -74,7 +85,9 @@ if df_all is not None:
     # 5. Generate the Clean Visual Chart
     fig, ax = plt.subplots(figsize=(12, 5.5))
     
-    ax.plot(df_recent['Timeframe'], df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
+    # Notice we use standard sequence index numbers for the X positions to ensure spacing layout
+    x_positions = range(len(df_recent))
+    ax.plot(x_positions, df_recent['RONI'], marker='o', color='#333333', linewidth=2, zorder=3)
     
     # Threshold Shading Zones
     ax.axhspan(0.5, max(2.0, latest_val + 0.2), color='#ffcccc', alpha=0.5, label='El Niño Threshold (≥ 0.5°C)')
@@ -88,12 +101,9 @@ if df_all is not None:
     ax.legend(loc="upper left")
     ax.grid(axis='y', linestyle=':', alpha=0.6)
     
-    # Clean X-axis ticks (showing every 3rd label to avoid layout clutter)
-    ticks_to_use = range(0, len(df_recent['Timeframe']), 3)
-    labels_to_use = [df_recent['Timeframe'].iloc[i] for i in ticks_to_use]
-    
-    ax.set_xticks(ticks_to_use)
-    ax.set_xticklabels(labels_to_use, rotation=45, ha='right', fontsize=9)
+    # Map the true unique timeframe names exactly to each positional tick index
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(df_recent['Timeframe'], rotation=45, ha='right', fontsize=9)
     
     plt.tight_layout()
     st.pyplot(fig)
@@ -101,3 +111,5 @@ if df_all is not None:
     # 6. Raw Data View Option
     with st.expander("Show raw data for last 24 periods"):
         st.dataframe(df_recent[['YR', 'Season', 'RONI']])
+else:
+    st.warning("No clean historical data loaded. Check parsing rules.")
