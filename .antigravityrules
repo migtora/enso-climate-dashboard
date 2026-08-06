@@ -1,0 +1,9 @@
+# Antigravity Rules for ENSO RONI Dashboard
+
+## Rules & Standards
+- Keep the NOAA feed parsing compatible with the vertical structure (`SEAS`, `YR`, `ANOM`). Never use melt configurations that expect wide 12-season columns.
+- Ensure all charts show the last 24 months clearly.
+- Maintain X-axis label optimization: only show every 3rd season label, rotated at 45 degrees.
+- Do not check in `.venv` or local configuration folder assets; always preserve `.gitignore`.
+- Ensure changes made to the app are mirrored both in the test workspace and the OneDrive folder copy.
+- Keep the Memory Bank (`/memory-bank/`) files updated whenever major context or schema transitions occur.
